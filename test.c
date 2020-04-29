@@ -49,16 +49,17 @@ int test1()
 	int ret = loadXML(&r, cfile_feeder, &xpp);
 	printf("parse xml ret=%d\n", ret);
 	fclose(pf);
-	//dumpXMLData(r.node);
+	dumpXMLData(r.node);
 
 	traverseXML(&r);
 
+	printf("====================search on a node:\n");
 
 	struct XmlNode *xn = getOneNodeByPath(r.node, "/web-app/servlet[servlet-name='jsp']/servlet-class");
 	if (xn) {
-		printf("xmlnodes used=%d allocated=%d\n value=%s\n", r.nodeUsed, r.nodeSize, xn->content);
-		//printf("attr[files] = %s\n", getNodeAttribute(xn, "files"));
+		printf("value=%s\n", xn->content);
 	}
+	printf("xmlnodes used=%d allocated=%d\n", r.nodeUsed, r.nodeSize);
 	freeXML(&r);
 
 	return 0;

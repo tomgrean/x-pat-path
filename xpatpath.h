@@ -16,11 +16,11 @@ struct XmlParseParam {
 	void *userData; // FILE pointer or file descriptor, etc.
 	int xmlNodeNum; // estimated xml node number.
 };
-struct NodeAttrib {
+struct NodeAttribute {
 	char *key;
 	char *val;
 };
-struct XmlNode;
+struct XmlNode; // predeclare
 
 struct NodeChildren {
 	struct XmlNode *me;
@@ -29,9 +29,8 @@ struct NodeChildren {
 
 struct XmlNode {
 	struct XmlNode *parent;
-	int attribSize;
 	struct NodeChildren *children;
-	struct NodeAttrib *attribs;
+	struct NodeAttribute *attribs; // array end with struct NodeAttribute { key = NULL, val = NULL }
 	char *nodeName;
 	char *content;
 };
@@ -40,6 +39,9 @@ struct XmlRoot {
 	int nodeUsed;
 	int nodeSize;
 	struct XmlNode *node;
+
+	// XML must has a single root, so the number of children is nodeUsed - 1.
+	struct NodeChildren *children;// array of pre allocated children. used internally.
 };
 
 // parse XML from a "feeder" function callback.

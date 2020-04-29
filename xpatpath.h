@@ -13,7 +13,8 @@
 
 // ****XML node definations****
 struct XmlParseParam {
-	void *userData;
+	void *userData; // FILE pointer or file descriptor, etc.
+	int xmlNodeNum; // estimated xml node number.
 };
 struct NodeAttrib {
 	char *key;
@@ -40,9 +41,19 @@ struct XmlRoot {
 	int nodeSize;
 	struct XmlNode *node;
 };
+
+// parse XML from a "feeder" function callback.
+// root is a stack pointer or heap allocated by the caller.
+// feeder is the callback function for data reading, a return of non-positive number indicates EOF or ERROR.
+// param hold the FILE pointer/file descriptor, and will pass to "feeder" in "void *d".
 int loadXML(struct XmlRoot *root, int (*feeder)(void *d, char *buffer, int maxlen), struct XmlParseParam *param);
+
+// save the XML to the specified file name.
 int storeXML(struct XmlNode *node, const char *fileName);
+
+// free XML resources.
 void freeXML(struct XmlRoot *root);
+
 /*
 parameter xpath follows partial xml xpath rules. examples:
 /web-app/session-config
@@ -53,7 +64,10 @@ NOTE: the array index start from 1.
 return: 1 or 0 XML Node.
 */
 struct XmlNode *getOneNodeByPath(struct XmlNode *pn, const char *xpath, ...);
+
+// debug tool. to show out the xml content.
 void dumpXMLData(struct XmlNode *node);
+
 // ****common node functions****
 
 // get the XML node attribute value the its key,

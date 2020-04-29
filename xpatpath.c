@@ -304,8 +304,12 @@ int loadXML(struct XmlRoot *root, int (*feeder)(void *, char *, int), struct Xml
 	memset(&user, 0, sizeof(user));
 	user.root = root;
 
-	root->node = malloc(NODE_INIT_LEN * sizeof(struct XmlNode));
-	root->nodeSize = NODE_INIT_LEN;
+	if (param->xmlNodeNum <= 0) {
+		param->xmlNodeNum = NODE_INIT_LEN;
+	}
+
+	root->node = malloc(param->xmlNodeNum * sizeof(struct XmlNode));
+	root->nodeSize = param->xmlNodeNum;
 	root->nodeUsed = 0;
 
 	p = XML_ParserCreate(NULL);

@@ -43,6 +43,7 @@ int test1()
 	}
 	memset(&xpp, 0, sizeof(xpp));
 	xpp.userData = pf;
+	xpp.xmlNodeNum = 3067;
 
 	printf("hello test\n");
 	int ret = loadXML(&r, cfile_feeder, &xpp);
@@ -55,7 +56,7 @@ int test1()
 
 	struct XmlNode *xn = getOneNodeByPath(r.node, "/web-app/servlet[servlet-name='jsp']/servlet-class");
 	if (xn) {
-		printf("value=%s\n", xn->content);
+		printf("xmlnodes used=%d allocated=%d\n value=%s\n", r.nodeUsed, r.nodeSize, xn->content);
 		//printf("attr[files] = %s\n", getNodeAttribute(xn, "files"));
 	}
 	freeXML(&r);

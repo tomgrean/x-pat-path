@@ -16,13 +16,13 @@ int fd_feeder(void *vfd, char *buffer, int maxlen)
 	return (int)read(fd, buffer, maxlen);
 }
 #endif
-int cfile_feeder(void *vf, char *buffer, int maxlen)
+static int cfile_feeder(void *vf, char *buffer, int maxlen)
 {
 	FILE *fp = vf;
 	return (int) fread(buffer, 1, maxlen, fp);
 }
 
-void traverseXML(struct XmlRoot *r)
+static void traverseXML(struct XmlRoot *r)
 {
 	int i;
 	for (i = 0; i < r->nodeUsed; ++i) {
@@ -37,6 +37,7 @@ int test1()
 	struct XmlParseParam xpp;
 	FILE *pf;
 
+	printf("==============function: %s\n", __func__);
 	pf = fopen("testxml/web.xml", "rb");
 	if (!pf) {
 		return 1;
@@ -53,7 +54,7 @@ int test1()
 
 	traverseXML(&r);
 
-	printf("====================search on a node:\n");
+	printf("-----search on a node:\n");
 
 	struct XmlNode *xn = getOneNodeByPath(r.node, "/web-app/servlet[servlet-name='jsp']/servlet-class");
 	if (xn) {
@@ -65,8 +66,47 @@ int test1()
 	return 0;
 }
 
+static const char *checker[] = {"web-app", "welcome-file-list"};
+static const int checkerLen = 2;
+static int xpathfilter(const char **path, int plen, const char **attr)
+{
+	int i, ret = 0;
+	for (i = 0; i < plen && !ret; ++i) {
+		if (!ret && i < checkerLen)
+			ret = strcmp(checker[i], path[i]);
+	}
+	return ret;
+}
+int test2()
+{
+	struct XmlRoot r;
+	struct XmlParseParam xpp;
+	FILE *pf;
+
+	printf("==============function: %s\n", __func__);
+	pf = fopen("testxml/web.xml", "rb");
+	if (!pf) {
+		return 1;
+	}
+	memset(&xpp, 0, sizeof(xpp));
+	xpp.userData = pf;
+	xpp.xmlNodeNum = 10;
+	xpp.filterNode = xpathfilter;
+
+	printf("hello test\n");
+	int ret = loadXML(&r, cfile_feeder, &xpp);
+	printf("parse xml ret=%d\n", ret);
+	fclose(pf);
+	dumpXMLData(r.node);
+
+	printf("xmlnodes used=%d allocated=%d\n", r.nodeUsed, r.nodeSize);
+	freeXML(&r);
+	return 0;
+}
+
 int main()
 {
 	test1();
+	test2();
 	return 0;
 }

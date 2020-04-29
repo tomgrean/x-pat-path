@@ -15,7 +15,10 @@
 struct XmlParseParam {
 	void *userData; // FILE pointer or file descriptor, etc.
 	int xmlNodeNum; // estimated xml node number.
+	//path is array of nodenames. pathlen is length of path. attr is the same as in expat starttag cbk.
+	int (*filterNode)(const char ** path, int pathlen, const char **attr);
 };
+
 struct NodeAttribute {
 	char *key;
 	char *val;

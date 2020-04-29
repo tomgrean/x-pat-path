@@ -15,11 +15,16 @@
 
 #define XML_BUFF_SIZE 1024
 #define NODE_INIT_LEN 64
+#define XPATH_BUF_SIZE 16
 
 struct expat_user_data {
 	struct XmlNode *currentNode;
 	struct XmlRoot *root;
+	struct XmlParseParam *param;
 	int currentChildren;
+	short parserState;// 0: normal, accepting, >=1: rejecting.
+	short xlen; // size of xpathBuffer, xpathBuffer may be NULL if 0.
+	const char **xpathBuffer; // array of nodeNames from root down to current node.
 };
 
 static void relocatePointers(struct XmlNode *pnew, struct NodeChildren *pnewkids, struct expat_user_data *d)
@@ -70,10 +75,54 @@ static void addChildren(struct expat_user_data *d)
 		d->currentNode->children = newChild;
 	}
 }
+
+static void ensureBufferSize(struct expat_user_data *d, int newlen)
+{
+	const char **temp;
+	if (d->xlen >= newlen) {
+		return;
+	}
+	temp = realloc(d->xpathBuffer, sizeof(char*) * 2 * d->xlen);
+	if (temp) {
+		d->xpathBuffer = temp;
+		d->xlen *= 2;
+	} else {
+		free(d->xpathBuffer);
+		loge("no char memory!\n");
+	}
+}
+
+// d->xpathBuffer must not to be null.
+// return the length
+static int updateCurrentXPath(struct expat_user_data *d, struct XmlNode *pn)
+{
+	int x = 0;
+
+	if (pn->parent) {
+		x = updateCurrentXPath(d, pn->parent);
+	}
+	ensureBufferSize(d, x + 1);
+	d->xpathBuffer[x] = pn->nodeName;
+	return ++x;
+}
 static void XMLCALL thestart(void *data, const XML_Char *el, const XML_Char **attr)
 {
 	int i;
 	struct expat_user_data *d = data;
+
+	if (d->parserState > 0) {
+		++(d->parserState);
+		return;
+	}
+	if (d->param->filterNode && d->currentNode) {
+		i = updateCurrentXPath(d, d->currentNode) + 1;
+		ensureBufferSize(d, i);
+		d->xpathBuffer[i - 1] = el;
+		if (d->param->filterNode(d->xpathBuffer, i, attr)) {
+			d->parserState = 1;
+			return;
+		}
+	}
 
 	if (d->root->nodeUsed >= d->root->nodeSize) {
 		struct XmlNode *xn = realloc(d->root->node, (d->root->nodeSize + NODE_INIT_LEN) * sizeof(struct XmlNode));
@@ -118,6 +167,11 @@ static void XMLCALL theend(void *data, const XML_Char *el)
 {
 	struct expat_user_data *d = data;
 
+	if (d->parserState > 0) {
+		--(d->parserState);
+		return;
+	}
+
 	if (d->currentNode) {
 		d->currentNode = d->currentNode->parent;
 	}
@@ -127,6 +181,10 @@ static void XMLCALL thetext(void *data, const XML_Char *s, int len)
 {
 	struct expat_user_data *d = data;
 	const char *pbegin, *pend;
+
+	if (d->parserState > 0) {
+		return;
+	}
 
 	pbegin = s;
 	pend = s + len - 1;
@@ -315,9 +373,15 @@ int loadXML(struct XmlRoot *root, int (*feeder)(void *, char *, int), struct Xml
 
 	memset(&user, 0, sizeof(user));
 	user.root = root;
+	user.param = param;
 
 	if (param->xmlNodeNum <= 0) {
 		param->xmlNodeNum = NODE_INIT_LEN;
+	}
+
+	p = XML_ParserCreate(NULL);
+	if (!p) {
+		return -2;
 	}
 
 	root->node = malloc(param->xmlNodeNum * sizeof(struct XmlNode));
@@ -325,9 +389,9 @@ int loadXML(struct XmlRoot *root, int (*feeder)(void *, char *, int), struct Xml
 	root->nodeUsed = 0;
 	root->children = malloc((param->xmlNodeNum - 1) * sizeof(struct NodeChildren));
 
-	p = XML_ParserCreate(NULL);
-	if (!p) {
-		return -2;
+	if (param->filterNode) {
+		user.xpathBuffer = malloc(XPATH_BUF_SIZE * sizeof(char*));
+		user.xlen = XPATH_BUF_SIZE;
 	}
 
 	XML_SetUserData(p, &user);
@@ -351,6 +415,9 @@ int loadXML(struct XmlRoot *root, int (*feeder)(void *, char *, int), struct Xml
 		if (len <= 0) {
 			break;
 		}
+	}
+	if (user.xpathBuffer) {
+		free(user.xpathBuffer);
 	}
 	XML_ParserFree(p);
 

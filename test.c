@@ -66,16 +66,16 @@ int test1()
 	return 0;
 }
 
-static const char *checker[] = {"web-app", "welcome-file-list"};
-static const int checkerLen = 2;
+static const char *checker[] = {"web-app", "welcome-file-list", NULL};
 static int xpathfilter(const char **path, int plen, const char **attr)
 {
-	int i, ret = 0;
-	for (i = 0; i < plen && !ret; ++i) {
-		if (!ret && i < checkerLen)
-			ret = strcmp(checker[i], path[i]);
+	int i;
+	for (i = 0; i < plen && checker[i]; ++i) {
+		if (strcmp(checker[i], path[i])) {
+			return 1;
+		}
 	}
-	return ret;
+	return 0;
 }
 int test2()
 {

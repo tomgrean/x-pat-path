@@ -103,10 +103,54 @@ int test2()
 	freeXML(&r);
 	return 0;
 }
+int test3()
+{
+	struct XmlRoot r;
+	struct XmlParseParam xpp;
+	FILE *pf;
+
+	printf("==============function: %s\n", __func__);
+	pf = fopen("testxml/web.xml", "rb");
+	if (!pf) {
+		return 1;
+	}
+	memset(&xpp, 0, sizeof(xpp));
+	xpp.userData = pf;
+	xpp.xmlNodeNum = 10;
+	xpp.filterNode = xpathfilter;
+
+	printf("hello test3\n");
+	int ret = loadXML(&r, cfile_feeder, &xpp);
+	printf("parse xml ret=%d\n", ret);
+	fclose(pf);
+	dumpXMLData(r.node);
+
+	printf("xmlnodes used=%d allocated=%d\n", r.nodeUsed, r.nodeSize);
+	struct XmlNode *pn = addToChild(&r, r.node, "test_new_tag", "very short test content");
+	if (pn) {
+		const char *keys[] = {"Attr1", "Number", NULL};
+		const char *vals[] = {"Value1", "2", NULL};
+		ret = setNodeAttribute(pn, keys, vals);
+		printf("add Attribute result=%d\n", ret);
+	}
+	pn = addToChild(&r, r.node, "new_tag_with_Child", NULL);
+	if (pn) {
+		addToChild(&r, pn, "new_tag_child", "Child Content");
+		addToChild(&r, pn, "new_tag_child", NULL);
+	}
+	pn = getOneNodeByPath(r.node, "/web-app/welcome-file-list/welcome-file[2]");
+	ret = deleteNode(&r, pn);
+	printf("deleteNode result=%d\n", ret);
+	dumpXMLData(r.node);
+	freeXML(&r);
+	return 0;
+}
+
 
 int main()
 {
 	test1();
 	test2();
+	test3();
 	return 0;
 }

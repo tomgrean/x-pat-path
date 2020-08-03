@@ -84,4 +84,18 @@ const char *getNodeAttribute(struct XmlNode *pn, const char *key);
 // return NULL if PATH is bad
 const char *pathBaseName(const char *path, int len);
 
+// *********edit the node*********
+// add a child node to @parent, with @root as XML data root.
+// ONLY @nodeValue can be NULL, which means an content empty node.
+// the node value can be later changed by replacing its content.
+// return the new child, or NULL.
+struct XmlNode *addToChild(struct XmlRoot *root, struct XmlNode *parent, const char *nodeName, const char *nodeValue);
+
+// set the XML attributes of the node @pn
+// @keys and @vals must appear in pair, and end with NULL value.
+// return 0 for success
+int setNodeAttribute(struct XmlNode *pn, const char *keys[], const char *vals[]);
+// delete the specified XML node.
+// return 0 for success
+int deleteNode(struct XmlRoot *root, struct XmlNode *toDel);
 #endif /* XPATPATH_H_ */

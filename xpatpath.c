@@ -27,6 +27,32 @@ struct expat_user_data {
 	const char **xpathBuffer; // array of nodeNames from root down to current node.
 };
 
+static void relocateXmlRoot(struct XmlNode *pnew, struct NodeChildren *pnewkids, struct XmlRoot *root)
+{
+	int i;
+	intptr_t pdelta, cdelta;
+	if (pnew == root->node && pnewkids == root->children) {
+		// luckily, no need to relocate.
+		return;
+	}
+	pdelta = (intptr_t)pnew - (intptr_t)(root->node);
+	cdelta = (intptr_t)pnewkids - (intptr_t)(root->children);
+	for (i = 0; i < root->nodeUsed; ++i) {
+		if (pnew[i].parent) {
+			pnew[i].parent = (struct XmlNode*)((intptr_t)(pnew[i].parent) + pdelta);
+		}
+		if (pnew[i].children) {
+			struct NodeChildren *pc;
+			pnew[i].children = (struct NodeChildren*)((intptr_t)(pnew[i].children) + cdelta);
+			for (pc = pnew[i].children; pc; pc = pc->next) {
+				pc->me = (struct XmlNode*)((intptr_t)(pc->me) + pdelta);
+				if (pc->next) {
+					pc->next = (struct NodeChildren*)((intptr_t)(pc->next) + cdelta);
+				}
+			}
+		}
+	}
+}
 static void relocatePointers(struct XmlNode *pnew, struct NodeChildren *pnewkids, struct expat_user_data *d)
 {
 	int i;
@@ -131,6 +157,8 @@ static void XMLCALL thestart(void *data, const XML_Char *el, const XML_Char **at
 			relocatePointers(xn, nc, d);
 			d->root->node = xn;
 			d->root->children = nc;
+			memset(&d->root->node[d->root->nodeSize], 0, NODE_INIT_LEN * sizeof(struct XmlNode));
+			memset(&d->root->children[d->root->nodeSize - 1], 0, NODE_INIT_LEN * sizeof(struct NodeChildren));
 			d->root->nodeSize = d->root->nodeSize + NODE_INIT_LEN;
 		} else {
 			//something really bad.
@@ -138,7 +166,6 @@ static void XMLCALL thestart(void *data, const XML_Char *el, const XML_Char **at
 			exit(1);
 		}
 	}
-	memset(&d->root->node[d->root->nodeUsed], 0, sizeof(struct XmlNode));
 	// set parent relations
 	d->root->node[d->root->nodeUsed].parent = d->currentNode;
 	if (d->currentNode) {
@@ -385,9 +412,15 @@ int loadXML(struct XmlRoot *root, int (*feeder)(void *, char *, int), struct Xml
 	}
 
 	root->node = malloc(param->xmlNodeNum * sizeof(struct XmlNode));
+	if (root->node) {
+		memset(root->node, 0, param->xmlNodeNum * sizeof(struct XmlNode));
+	}
 	root->nodeSize = param->xmlNodeNum;
 	root->nodeUsed = 0;
 	root->children = malloc((param->xmlNodeNum - 1) * sizeof(struct NodeChildren));
+	if (root->children) {
+		memset(root->children, 0, (param->xmlNodeNum - 1) * sizeof(struct NodeChildren));
+	}
 
 	if (param->filterNode) {
 		user.xpathBuffer = malloc(XPATH_BUF_SIZE * sizeof(char*));
@@ -437,20 +470,34 @@ static void dumpNode(FILE *target, struct XmlNode *node, int indent)
 			fprintf(target, " %s=\"%s\"", node->attribs[i].key, node->attribs[i].val);
 		}
 	}
-	if (node->content) {
-		fprintf(target, ">%s", node->content);
-	} else {
-		fprintf(target, ">\n");
-	}
+
 	pc = node->children;
+	if (pc) {
+		if (node->content) {
+			fprintf(target, ">%s\n", node->content);
+		} else {
+			fprintf(target, ">\n");
+		}
+	} else {
+		if (node->content) {
+			fprintf(target, ">%s", node->content);
+		} else {
+			fprintf(target, "/>\n");
+		}
+	}
+
 	while (pc) {
 		dumpNode(target, pc->me, indent >= 0 ? indent + 1 : -1);
 		pc = pc->next;
 	}
-	for (i = 0; i < indent && !node->content; ++i) {
+
+	pc = node->children;
+	for (i = 0; i < indent && pc; ++i) {
 		fprintf(target, "\t");
 	}
-	fprintf(target, "</%s>\n", node->nodeName);
+	if (pc || node->content) {
+		fprintf(target, "</%s>\n", node->nodeName);
+	}
 }
 
 int storeXML(struct XmlNode *node, const char *fileName)
@@ -481,7 +528,7 @@ void freeXML(struct XmlRoot *root)
 	if (!root) {
 		return;
 	}
-	for (i = 0; i < root->nodeUsed; ++i) {
+	for (i = 0; i < root->nodeSize; ++i) {
 		struct XmlNode *pn;
 		int x;
 		pn = &root->node[i];
@@ -528,3 +575,154 @@ const char *getNodeAttribute(struct XmlNode *pn, const char *key)
 	}
 	return NULL;
 }
+struct XmlNode *addToChild(struct XmlRoot *root, struct XmlNode *parent, const char *nodeName, const char *nodeValue)
+{
+	int i;
+	struct XmlNode *target = NULL;
+	struct NodeChildren *targetChild = NULL;
+
+	if (!(root && parent && nodeName)) {
+		return NULL;
+	}
+	// realloc the root memory if nessesary
+	if (root->nodeUsed >= root->nodeSize) {
+		struct XmlNode *xn = realloc(root->node, (root->nodeSize + NODE_INIT_LEN) * sizeof(struct XmlNode));
+		struct NodeChildren *nc = realloc(root->children, (root->nodeSize + NODE_INIT_LEN - 1) * sizeof(struct NodeChildren));
+		if (xn) {
+			relocateXmlRoot(xn, nc, root);
+			root->node = xn;
+			root->children = nc;
+			memset(&root->node[root->nodeSize], 0, NODE_INIT_LEN * sizeof(struct XmlNode));
+			memset(&root->children[root->nodeSize - 1], 0, NODE_INIT_LEN * sizeof(struct NodeChildren));
+			root->nodeSize = root->nodeSize + NODE_INIT_LEN;
+		} else {
+			//something really bad.
+			loge("I gonna die.no memory!\n");
+			exit(1);
+		}
+	}
+	// find the first usable place.
+	// root->nodeUsed cannot be used as index now.
+	for (i = 0; i < root->nodeSize; ++i) {
+		target = &root->node[i];
+		if (!target->nodeName) {
+			break;
+		}
+	}
+	for (i = 0; i < root->nodeSize - 1; ++i) {
+		targetChild = &root->children[i];
+		if (!targetChild->me) {
+			break;
+		}
+	}
+	if (!(target && targetChild)) {
+		return NULL;
+	}
+	// set parent relations
+	target->parent = parent;
+
+	memset(target, 0, sizeof(struct XmlNode));
+	memset(targetChild, 0, sizeof(struct NodeChildren));
+	targetChild->me = target;
+
+	if (parent->children) {
+		struct NodeChildren *pc = parent->children;
+
+		while (pc->next) {
+			pc = pc->next;
+		}
+		pc->next = targetChild;
+	} else {
+		parent->children = targetChild;
+	}
+
+	// set currentNode
+	target->nodeName = strdup(nodeName);
+	target->content = (nodeValue && *nodeValue) ? strdup(nodeValue) : NULL;
+
+	root->nodeUsed++;
+
+	return target;
+}
+int setNodeAttribute(struct XmlNode *pn, const char *keys[], const char *vals[])
+{
+	int i;
+	int attribSize = 0;
+
+	if (!pn) {
+		return __LINE__;
+	}
+	if (keys) {
+		for (i = 0; keys[i]; ++i) {
+			++attribSize;
+		}
+	}
+	if (pn->attribs) {
+		free(pn->attribs);
+		pn->attribs = NULL;
+	}
+	if (attribSize) {
+		++attribSize;// add the NULL tail
+		pn->attribs = malloc(sizeof(struct NodeAttribute) * attribSize);
+		for (i = 0; keys[i]; ++i) {
+			pn->attribs[i].key = strdup(keys[i]);
+			pn->attribs[i].val = vals[i] ? strdup(vals[i]) : NULL;
+		}
+		pn->attribs[attribSize - 1].key = pn->attribs[attribSize - 1].val = NULL;
+	}
+	return 0;
+}
+int deleteNode(struct XmlRoot *root, struct XmlNode *toDel)
+{
+	int i;
+	if (!(root && toDel)) {
+		return __LINE__;
+	}
+	// can not delete root
+	if (toDel == root->node) {
+		return __LINE__;
+	}
+	for (i = 0; i < root->nodeSize; ++i) {
+		if (&root->node[i] == toDel) {
+			struct NodeChildren *nc;
+			int x;
+			if (toDel->children) {
+				// delete all children.
+				for (nc = toDel->children; nc; nc = nc->next) {
+					deleteNode(root, nc->me);
+				}
+			}
+			free(toDel->nodeName);
+			toDel->nodeName = NULL;
+			if (toDel->attribs) {
+				for (x = 0; toDel->attribs->key; ++x) {
+					free(toDel->attribs->key);
+					free(toDel->attribs->val);
+				}
+				free(toDel->attribs);
+			}
+			toDel->attribs = NULL;
+			free(toDel->content);
+			toDel->content = NULL;
+
+			nc = toDel->parent->children;
+			if (nc->me == toDel) {
+				toDel->parent->children = nc->next;
+				nc->me = NULL;
+				nc->next = NULL;
+			} else {
+				for (; nc->next; nc = nc->next) {
+					if (nc->next->me == toDel) {
+						nc->next->me = NULL;
+						nc->next = nc->next->next;
+						//nc->next = xxxx;
+						break;
+					}
+				}
+			}
+			root->nodeUsed--;
+		}
+	}
+	return 0;
+}
+

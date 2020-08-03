@@ -36,9 +36,15 @@ struct XmlParseParam xpp;
 
 memset(&xpp, 0, sizeof(xpp));
 xpp.filterNode = xpathfilter;
-ret = loadXML(&r, file_reeder, &xpp);
+ret = loadXML(&r, file_feeder, &xpp);
 dumpXMLData(r.node);
 //... other works with the XML data.
 freeXML(&r);
 ```
-
+XML node could be added or deleted by addToChild()/deleteNode() functions.
+```
+struct XmlNode *pn = addToChild(&r, r.node, "test_new_tag", "very short test content");
+//...
+pn = getOneNodeByPath(r.node, "/web-app/welcome-file-list/welcome-file[2]");
+ret = deleteNode(&r, pn);
+```
